@@ -1,0 +1,12 @@
+package com.example.spacetraderspicyber.authorisation;
+
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+
+public class ApiAuthorisationService implements AuthorisationService {
+
+    @Override
+    public String getAuthToken() {
+        return "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZGVudGlmaWVyIjoiU1BJQ1lCRVIiLCJ2ZXJzaW9uIjoidjIuMS40IiwicmVzZXRfZGF0ZSI6IjIwMjMtMTItMzAiLCJpYXQiOjE3MDM5NTYyNDksInN1YiI6ImFnZW50LXRva2VuIn0.kMNAXVmZ9US6J4IzlVhhsH7tn7Laan5ZbYy0SYTx6J67JqHvO93phPU4vtMbrf_tIZ0WYX03aBDlnYwftNa7zg7cDUXPkaEBdpUWZzr3EgcRbscmuHiNjHpqOvmuNZo7zOXovbZdzGfWJT4OV3OHINPzdZQ4M_ANJZ46ulR87KqKDhBLcIkCIyDD58GCcOEbHiH4R60ZLlhiVtmbCd9KoIDmFIonYFpYKVolmU9n10sqoVZDo0rdrq5VozGbTvZdhW65EMcZX1d3M_n6g-JQuTH4QFSPps0KQ73eB_PhDi87rDii1Yh5uU7AKj64BYa3Km8xJVv3jgbEZVNAs2vOqQ";
+    }
+}
