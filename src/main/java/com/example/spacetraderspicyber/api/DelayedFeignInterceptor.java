@@ -1,4 +1,4 @@
-package com.example.spacetraderspicyber;
+package com.example.spacetraderspicyber.api;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,8 +9,11 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class DelayedFeignInterceptor implements RequestInterceptor {
 
-    @Value("${api.call.delay:500}")
-    final long delay = 500;
+    private final long delay;
+
+    public DelayedFeignInterceptor(@Value("${api.call.delay:500}") long delay) {
+        this.delay = delay;
+    }
 
     @Override
     public void apply(RequestTemplate requestTemplate) {

@@ -1,6 +1,6 @@
 package com.example.spacetraderspicyber.client;
 
-import com.example.spacetraderspicyber.FeignConfig;
+import com.example.spacetraderspicyber.api.FeignConfig;
 import com.example.spacetraderspicyber.model.*;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;
@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.*;
 
 @FeignClient(name = "api", url = "https://api.spacetraders.io/", configuration = FeignConfig.class)
 public interface SpacetraderClient {
+
+    //TODO: get system info from endpoint
+    String STARTING_SYSTEM = "X1-N57";
 
     @PostMapping(value = "/v2/register", produces = "application/json")
     String registerAgent(Agent agent);
@@ -64,8 +67,13 @@ public interface SpacetraderClient {
 
     //Contracts
 
-    @GetMapping(value = "/v2/my/contracts?page={page}&limit=20")
-    String getContracts(@PathVariable("page") Integer page);
+    @GetMapping(value = "/v2/my/contracts", produces = "application/json")
+    Contracts getContracts(@RequestParam(value = "page", defaultValue = "1") int page,
+                           @RequestParam(value = "limit", defaultValue = "20") int limit);
+
+    default Contracts getContracts(Integer page) {
+        return getContracts(page, 20);
+    }
 
     @PostMapping(value = "/v2/my/contracts/{contractId}/accept")
     void acceptContracts(@PathVariable("contractId") String contractId);
@@ -85,23 +93,42 @@ public interface SpacetraderClient {
 
     //System
 
-    //TODO: Variable System
-    @GetMapping(value = "/v2/systems/X1-NN7/waypoints?page={page}&limit=20")
-    String getWaypoints(@PathVariable("page") Integer page);
+    @GetMapping(value = "/v2/systems/{system}/waypoints", produces = "application/json")
+    String getWaypoints(
+            @PathVariable("system") String system,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "limit", defaultValue = "20") int limit
+    );
 
-    //TODO: Variable System
-    @GetMapping(value = "/v2/systems/X1-NN7/waypoints?type=ENGINEERED_ASTEROID")
-    String getAsteroidFieldLocation();
+    default String getWaypoints(int page) {
+        return getWaypoints(STARTING_SYSTEM, page, 20);
+    }
 
-    //TODO: Variable System
-    @GetMapping(value = "/v2/systems/X1-NN7/waypoints?traits={trait}")
-    String getWaypointByTratits(@PathVariable("trait") String trait);
+    @GetMapping(value = "/v2/systems/{system}/waypoints", produces = "application/json")
+    String getAsteroidFieldLocation(@PathVariable(value = "system", required = false) String system, @RequestParam(value = "type") String type);
 
-    //TODO: Variable
-    @GetMapping(value = "/v2/systems/X1-NN7/waypoints/{waypoint}/market")
-    String viewMarketData(@PathVariable("waypoint") String waypoint);
+    default String getAsteroidFieldLocation() {
+        return getAsteroidFieldLocation(STARTING_SYSTEM, "ENGINEERED_ASTEROID");
+    }
 
-    //TODO: Variable
-    @GetMapping(value = "/v2/systems/X1-NN7/waypoints/{waypoint}")
-    String getWaypoint(@PathVariable("waypoint") String waypoint);
+    @GetMapping(value = "/v2/systems/{system}/waypoints", produces = "application/json")
+    String getWaypointByTraits(@PathVariable("system") String system, @RequestParam(value = "traits") String trait);
+
+    default String getWaypointByTraits(String trait) {
+        return getWaypointByTraits(STARTING_SYSTEM, trait);
+    }
+
+    @GetMapping(value = "/v2/systems/{system}/waypoints/{waypoint}/market", produces = "application/json")
+    String viewMarketData(@PathVariable("system") String system, @PathVariable("waypoint") String waypoint);
+
+    default String viewMarketData(String waypoint) {
+        return viewMarketData(STARTING_SYSTEM, waypoint);
+    }
+
+    @GetMapping(value = "/v2/systems/{system}/waypoints/{waypoint}", produces = "application/json")
+    String getWaypoint(@PathVariable("system") String system, @PathVariable("waypoint") String waypoint);
+
+    default String getWaypoint(String waypoint) {
+        return getWaypoint(STARTING_SYSTEM, waypoint);
+    }
 }

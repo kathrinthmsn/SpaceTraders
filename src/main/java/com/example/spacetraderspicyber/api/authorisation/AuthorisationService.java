@@ -1,4 +1,4 @@
-package com.example.spacetraderspicyber.authorisation;
+package com.example.spacetraderspicyber.api.authorisation;
 
 public interface AuthorisationService {
 

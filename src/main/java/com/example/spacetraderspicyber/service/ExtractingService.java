@@ -1,56 +1,58 @@
-package com.example.spacetraderspicyber.client;
+package com.example.spacetraderspicyber.service;
 
-import com.example.spacetraderspicyber.events.EventPublisher;
+import com.example.spacetraderspicyber.client.SpacetraderClient;
+import com.example.spacetraderspicyber.model.Contracts.Contract;
 import com.example.spacetraderspicyber.model.Good;
-import org.json.JSONArray;
+import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
+import java.util.List;
 
 import static java.lang.Thread.sleep;
 
+@Slf4j
 @Component
-public class Extracting {
+public class ExtractingService {
 
     @Autowired
     private SpacetraderClient spacetraderClient;
     @Autowired
-    private Fueling fueling;
+    private FuelingService fuelingService;
     @Autowired
-    private Mining mining;
+    private MiningService mining;
     @Autowired
-    private Scanning scanning;
+    private ScanningService scanningService;
     @Autowired
-    private Selling selling;
+    private SellingService sellingService;
     @Autowired
-    private Contracts contracts;
+    private ContractsService contractsService;
 
     public void goToExtractMinerals(String shipSymbol) throws InterruptedException {
 
-        JSONObject contractInfo = contracts.getContractInfo();
-        JSONArray contractsArray = contractInfo.getJSONArray("data");
-        boolean fulfilled = contractsArray.getJSONObject(contractsArray.length()-1).getBoolean("fulfilled");
-        boolean accepted = contractsArray.getJSONObject(contractsArray.length()-1).getBoolean("accepted");
+        List<Contract> contracts = contractsService.getContractInfo();
+        Contract lastContract = contracts.get(contracts.size() - 1);
+        boolean fulfilled = lastContract.isFulfilled();
+        boolean accepted = lastContract.isAccepted();
 
 
         while(accepted && !fulfilled) {
             mining.flyToAsteroid(shipSymbol);
-            if(scanning.surveySucceful(shipSymbol)) {
-                this.extractMinerals(shipSymbol, contractInfo);
+            if (scanningService.surveySuccessful(shipSymbol)) {
+                this.extractMinerals(shipSymbol, contracts);
             }
-              selling.selling(shipSymbol);
+            sellingService.selling(shipSymbol);
         }
     }
 
-    public void extractMinerals(String shipSymbol, JSONObject contractInfo) throws InterruptedException {
+    public void extractMinerals(String shipSymbol, List<Contract> contracts) throws InterruptedException {
 
         String shipInfo = spacetraderClient.seeShipDetails(shipSymbol);
 
         JSONObject shipData = new JSONObject(shipInfo).getJSONObject("data");
         JSONObject cargo = shipData.getJSONObject("cargo");
-        System.out.println("Cargo before extracting: " + cargo);
+        log.info("Cargo before extracting: {}", cargo);
         int load = cargo.getInt("units");
         int capacity = cargo.getInt("capacity");
 
@@ -58,16 +60,16 @@ public class Extracting {
             JSONObject extracted = new JSONObject(spacetraderClient.extractMinerals(shipSymbol));
             String extractedMineral = extracted.getJSONObject("data").getJSONObject("extraction").getJSONObject("yield").getString("symbol");
             int yield = extracted.getJSONObject("data").getJSONObject("extraction").getJSONObject("yield").getInt("units");
-            System.out.println("Extracted Mineral: " + yield + " " + extractedMineral);
+            log.info("Extracted Mineral: {} {}", yield, extractedMineral);
             load += yield;
             int cooldown = extracted.getJSONObject("data").getJSONObject("cooldown").getInt("totalSeconds");
-            System.out.println(shipSymbol + " sleepy time for: " + cooldown + "s");
+            log.info("{} sleepy time for: {}s", shipSymbol, cooldown);
             sleep(cooldown * 1000L);
 
-            if(!extractedMineral.equals(contracts.getContractDeliveryGood(contractInfo).getSymbol())) {
+            if (!extractedMineral.equals(contractsService.getContractDeliveryGood(contracts).getSymbol())) {
                 Good extractedGood = Good.builder().symbol(extractedMineral).units(yield).build();
                 spacetraderClient.jettisonCargo(shipSymbol, extractedGood);
-                System.out.println("Throwing: " + yield + " " + extractedMineral + " in the garbage collector.");
+                log.info("Throwing: {} {} in the garbage collector.", yield, extractedMineral);
 
             }
         }

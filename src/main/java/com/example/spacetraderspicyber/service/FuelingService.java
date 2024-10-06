@@ -1,27 +1,30 @@
-package com.example.spacetraderspicyber.client;
+package com.example.spacetraderspicyber.service;
 
+import com.example.spacetraderspicyber.client.SpacetraderClient;
 import com.example.spacetraderspicyber.model.Fuel;
 import com.example.spacetraderspicyber.model.Good;
+import lombok.extern.slf4j.Slf4j;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
-public class Fueling {
+public class FuelingService {
 
     @Autowired
     private SpacetraderClient spacetraderClient;
 
     public void fuelShip(String shipSymbol) {
         JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol));
-        Integer fuelCapacity = shipInfo.getJSONObject("data").getJSONObject("fuel").getInt("capacity");
-        Integer fuelCurrent = shipInfo.getJSONObject("data").getJSONObject("fuel").getInt("current");
+        int fuelCapacity = shipInfo.getJSONObject("data").getJSONObject("fuel").getInt("capacity");
+        int fuelCurrent = shipInfo.getJSONObject("data").getJSONObject("fuel").getInt("current");
         String currentLocation = shipInfo.getJSONObject("data").getJSONObject("nav").getString("waypointSymbol");
         JSONObject waypoint = new JSONObject(spacetraderClient.getWaypoint(currentLocation)).getJSONObject("data");
-        if (!fuelCurrent.equals(fuelCapacity) && this.hasMarketplace(waypoint)) {
+        if ((fuelCurrent != fuelCapacity) && this.hasMarketplace(waypoint)) {
             spacetraderClient.dockShip(shipSymbol);
-            System.out.println("Fueling ship " + shipSymbol);
+            log.info("Fueling ship {}", shipSymbol);
             spacetraderClient.fuelShip(shipSymbol);
             spacetraderClient.orbitShip(shipSymbol);
         }
@@ -41,7 +44,7 @@ public class Fueling {
             int fuelAmount = 0;
             if (fuelItem != null) {
                 fuelAmount = fuelItem.getInt("units");
-                System.out.println("The spaceship " + shipSymbol + " has " + fuelAmount + " units of fuel.");
+                log.info("The spaceship {} has {} units of fuel.", shipSymbol, fuelAmount);
             }
             JSONObject cargo = shipInfo.getJSONObject("data").getJSONObject("cargo");
             int capacity = cargo.getInt("capacity");
@@ -53,7 +56,7 @@ public class Fueling {
                 if (capacity - load < amountToBuy) {
                     amountToBuy = capacity - load;
                 }
-                System.out.println(shipSymbol + " bought " + amountToBuy + " fuel.");
+                log.info("{} bought {} fuel.", shipSymbol, amountToBuy);
                 spacetraderClient.purchaseCargo(shipSymbol, Good.builder()
                         .symbol("FUEL")
                         .units(amountToBuy)
@@ -61,7 +64,7 @@ public class Fueling {
                 spacetraderClient.orbitShip(shipSymbol);
             }
         }
-        if (!fuelCurrent.equals(fuelCapacity) && !this.hasMarketplace(waypoint)) {
+        if ((fuelCurrent != fuelCapacity) && !this.hasMarketplace(waypoint)) {
             JSONArray cargoInventory = shipInfo.getJSONObject("data")
                     .getJSONObject("cargo").getJSONArray("inventory");
 
@@ -77,7 +80,7 @@ public class Fueling {
             int fuelAmount = 0;
             if (fuelItem != null) {
                 fuelAmount = fuelItem.getInt("units");
-                System.out.println("The spaceship " + shipSymbol + " has " + fuelAmount + " units of fuel.");
+                log.info("The spaceship {} has {} units of fuel.", shipSymbol, fuelAmount);
                 int fuelAvailable = fuelAmount * 100;
                 if (fuelAvailable < fuelCapacity - fuelCurrent) {
                     fuelAmount = fuelAvailable;
@@ -85,7 +88,7 @@ public class Fueling {
                     fuelAmount = fuelCapacity - fuelCurrent;
                 }
                 spacetraderClient.dockShip(shipSymbol);
-                System.out.println(shipSymbol + " fueling " + fuelAmount + " units of fuel from cargo.");
+                log.info("{} fueling {} units of fuel from cargo.", shipSymbol, fuelAmount);
                 spacetraderClient.fuelShip(shipSymbol, Fuel.builder().units(fuelAmount).fromCargo(true).build());
                 spacetraderClient.orbitShip(shipSymbol);
             }

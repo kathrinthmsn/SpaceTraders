@@ -1,39 +1,39 @@
-package com.example.spacetraderspicyber.client;
+package com.example.spacetraderspicyber.service;
 
-import com.example.spacetraderspicyber.events.EventPublisher;
-import com.example.spacetraderspicyber.model.*;
-import com.example.spacetraderspicyber.service.WaypointService;
-import org.json.JSONArray;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import com.example.spacetraderspicyber.client.SpacetraderClient;
+import com.example.spacetraderspicyber.model.Contracts.Contract;
+import com.example.spacetraderspicyber.model.Fuel;
+import com.example.spacetraderspicyber.model.Good;
+import com.example.spacetraderspicyber.model.Waypoint;
 import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Component;
 
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-import static java.lang.Thread.sleep;
-
 @Component
-public class Mining {
+public class MiningService {
 
     @Autowired
     private SpacetraderClient spacetraderClient;
     @Autowired
-    private Contracts contracts;
+    private ContractsService contractsService;
     @Autowired
     private WaypointService waypointService;
     @Autowired
-    private MarketSearch marketSearch;
-    @Autowired
-    private EventPublisher eventPublisher;
+    private MarketSearchService marketSearchService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    public MiningService(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
 
     //TODO: Find closest Asteroid
     public void flyToAsteroid(String shipSymbol) throws InterruptedException {
-        JSONObject contractInfo = contracts.getContractInfo();
-        Good goodForDelivery = contracts.getContractDeliveryGood(contractInfo);
-        if(!Good.isMinable(goodForDelivery)){
+        List<Contract> contracts = contractsService.getContractInfo();
+        Good goodForDelivery = contractsService.getContractDeliveryGood(contracts);
+        if (Good.isNotMinable(goodForDelivery)) {
             return;
         }
         if("GOLD_ORE".equals(goodForDelivery.getSymbol()) || "SILVER_ORE".equals(goodForDelivery.getSymbol()) || "PLATINUM_ORE".equals(goodForDelivery.getSymbol())) {
@@ -75,7 +75,7 @@ public class Mining {
         String currentLocation = shipInfo.getString("waypointSymbol");
         if(!currentLocation.equals(waypointAsteroid)) {
             Waypoint waypoint = waypointService.findByName(waypointAsteroid);
-            marketSearch.navigateToWaypoint(waypoint, shipSymbol);
+            marketSearchService.navigateToWaypoint(waypoint, shipSymbol);
         }
     }
 
@@ -96,9 +96,9 @@ public class Mining {
                 distance = distanceToWaypoint;
             }
         }
-        Integer fuelCapacity = shipInfo.getJSONObject("fuel").getInt("capacity");
-        Integer fuelCurrent = shipInfo.getJSONObject("fuel").getInt("current");
-        if(distance > fuelCurrent && !fuelCurrent.equals(fuelCapacity)) {
+        int fuelCapacity = shipInfo.getJSONObject("fuel").getInt("capacity");
+        int fuelCurrent = shipInfo.getJSONObject("fuel").getInt("current");
+        if (distance > fuelCurrent && (fuelCurrent != fuelCapacity)) {
             spacetraderClient.fuelShip(shipSymbol, Fuel.builder().units(fuelCapacity - fuelCurrent).fromCargo(true).build());
         }
         return closestWaypoint;

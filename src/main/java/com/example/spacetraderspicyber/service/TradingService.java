@@ -1,57 +1,52 @@
-package com.example.spacetraderspicyber.client;
+package com.example.spacetraderspicyber.service;
 
+import com.example.spacetraderspicyber.client.SpacetraderClient;
+import com.example.spacetraderspicyber.model.Contracts.Contract;
 import com.example.spacetraderspicyber.model.Good;
 import com.example.spacetraderspicyber.model.Market;
 import com.example.spacetraderspicyber.model.TradeGood;
-import com.example.spacetraderspicyber.model.WaypointSymbol;
-import com.example.spacetraderspicyber.service.MarketService;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import org.json.JSONArray;
+import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Type;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
 
-import static java.lang.Thread.sleep;
-
+@Slf4j
 @Component
-public class Trading {
+public class TradingService {
 
     @Autowired
     private SpacetraderClient spacetraderClient;
     @Autowired
-    private Contracts contracts;
+    private ContractsService contractsService;
     @Autowired
-    private Selling selling;
+    private SellingService sellingService;
     @Autowired
-    private Extracting extracting;
+    private ExtractingService extractingService;
     @Autowired
-    private MarketSearch marketSearch;
+    private MarketSearchService marketSearchService;
     @Autowired
     private MarketService marketService;
 
     //TODO: Buy Item in another System/ refine Items
     public void buyItemForContract(String shipSymbol) throws InterruptedException {
         if (getShipLoad(shipSymbol) > 5) {
-            selling.selling(shipSymbol);
+            sellingService.selling(shipSymbol);
         }
-        JSONObject contractInfo = contracts.getContractInfo();
-        Good goodForDelivery = contracts.getGoodLeftToDeliverForContract(contractInfo);
+        List<Contract> contracts = contractsService.getContractInfo();
+        Good goodForDelivery = contractsService.getGoodLeftToDeliverForContract(contracts);
 
-        if(this.checkPurchasePrice(shipSymbol, goodForDelivery, contractInfo)){
-            contracts.purchaseCargoForContract(shipSymbol);
+        if (this.checkPurchasePrice(shipSymbol, goodForDelivery, contracts)) {
+            contractsService.purchaseCargoForContract(shipSymbol);
         }
         else {
-            extracting.goToExtractMinerals(shipSymbol);
-            contracts.checkContractValidity();
+            extractingService.goToExtractMinerals(shipSymbol);
+            contractsService.checkContractValidity();
         }
     }
 
@@ -63,8 +58,8 @@ public class Trading {
         return new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("cargo").getInt("units");
     }
 
-    public boolean checkPurchasePrice(String shipSymbol, Good goodForDelivery, JSONObject contractInfo) throws InterruptedException {
-            if(checkTradeGoods(shipSymbol, goodForDelivery, contractInfo)) {
+    public boolean checkPurchasePrice(String shipSymbol, Good goodForDelivery, List<Contract> contracts) throws InterruptedException {
+        if (checkTradeGoods(shipSymbol, goodForDelivery, contracts)) {
                 return true;
             } else {
                 List<Market> markets = marketService.findMarketsByGoodsToSell(goodForDelivery.getSymbol());
@@ -72,8 +67,8 @@ public class Trading {
                 List<Market> marketsAvailableForBuyingGood = marketService.findMarketsByGoodsToSell(goodForDelivery.getSymbol());
                 List<Market> marketsWithTradeGoodNotDiscovered = findMarketsNotInTradeGoods(markets, tradeGoods);
                 while (marketsAvailableForBuyingGood.size() > tradeGoods.size()) {
-                    Market closestMarket = marketSearch.findClosestMarket(marketsWithTradeGoodNotDiscovered, shipSymbol);
-                    marketSearch.navigateToMarket(closestMarket, shipSymbol);
+                    Market closestMarket = marketSearchService.findClosestMarket(marketsWithTradeGoodNotDiscovered, shipSymbol);
+                    marketSearchService.navigateToMarket(closestMarket, shipSymbol);
                     JSONObject marketData = new JSONObject(spacetraderClient.viewMarketData(closestMarket.getSymbol()));
                     if (marketData.getJSONObject("data").has("tradeGoods")) {
                         updateTradeGoods(marketData);
@@ -81,23 +76,19 @@ public class Trading {
                     }
                     marketsWithTradeGoodNotDiscovered.remove(closestMarket);
                 }
-                if(checkTradeGoods(shipSymbol, goodForDelivery, contractInfo)) {
-                    return true;
-                }
+            return checkTradeGoods(shipSymbol, goodForDelivery, contracts);
             }
-
-        return false;
     }
 
-    public boolean checkTradeGoods(String shipSymbol, Good goodForDelivery, JSONObject contractInfo) throws InterruptedException {
+    public boolean checkTradeGoods(String shipSymbol, Good goodForDelivery, List<Contract> contracts) throws InterruptedException {
         List<TradeGood> tradeGoods = marketService.findTradeGoodsBySymbol(goodForDelivery.getSymbol());
         List<Market> marketsAvailableForBuyingGood = marketService.findMarketsByGoodsToSell(goodForDelivery.getSymbol());
         if(marketsAvailableForBuyingGood.size() <= tradeGoods.size()) {
             TradeGood tradeGoodWithLowestPrice = findLowestPurchasePrice(tradeGoods);
             double priceToPayForContractGood = tradeGoodWithLowestPrice.getPurchasePrice() * goodForDelivery.getUnits();
-            if((getOnFulfilledMoney(contractInfo) > priceToPayForContractGood   && getAgentCredits() > priceToPayForContractGood || (!Good.isMinable(goodForDelivery)) && priceToPayForContractGood < 50000)) {
-                System.out.println("Trade Good found with Lowest Price: " + goodForDelivery.getSymbol() + " for " + tradeGoodWithLowestPrice.getPurchasePrice() + "$");
-                marketSearch.navigateToMarket(tradeGoodWithLowestPrice.getMarket(), shipSymbol);
+            if ((getOnFulfilledMoney(contracts) > priceToPayForContractGood && getAgentCredits() > priceToPayForContractGood || (Good.isNotMinable(goodForDelivery)) && priceToPayForContractGood < 50000)) {
+                log.info("Trade Good found with Lowest Price: {} for {}$", goodForDelivery.getSymbol(), tradeGoodWithLowestPrice.getPurchasePrice());
+                marketSearchService.navigateToMarket(tradeGoodWithLowestPrice.getMarket(), shipSymbol);
                 JSONObject marketData = new JSONObject(spacetraderClient.viewMarketData(tradeGoodWithLowestPrice.getMarket().getSymbol()));
                     updateTradeGoods(marketData);
                 return true;
@@ -148,13 +139,13 @@ public class Trading {
 
     private void updateTradeGoods(JSONObject marketData) {
         if (marketData.getJSONObject("data").has("tradeGoods")) {
-            marketSearch.updateTradeGoods(marketData);
+            marketSearchService.updateTradeGoods(marketData);
         }
     }
 
-    private int getOnFulfilledMoney(JSONObject contractInfo) {
-        JSONArray contractsArray = contractInfo.getJSONArray("data");
-        return contractsArray.getJSONObject(contractsArray.length() - 1).getJSONObject("terms").getJSONObject("payment").getInt("onFulfilled");
+    private int getOnFulfilledMoney(List<Contract> contracts) {
+        Contract lastContract = contracts.get(contracts.size() - 1);
+        return lastContract.getTerms().getPayment().getOnFulfilled();
     }
 
     private int getAgentCredits() {

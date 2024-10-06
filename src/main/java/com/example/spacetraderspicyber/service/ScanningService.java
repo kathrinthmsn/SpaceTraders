@@ -1,9 +1,11 @@
-package com.example.spacetraderspicyber.client;
+package com.example.spacetraderspicyber.service;
 
+import com.example.spacetraderspicyber.client.SpacetraderClient;
+import com.example.spacetraderspicyber.model.Contracts.Contract;
 import com.example.spacetraderspicyber.model.Good;
 import com.example.spacetraderspicyber.model.Trait;
 import com.example.spacetraderspicyber.model.Waypoint;
-import com.example.spacetraderspicyber.service.WaypointService;
+import lombok.extern.slf4j.Slf4j;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,21 +16,22 @@ import java.util.List;
 
 import static java.lang.Thread.sleep;
 
+@Slf4j
 @Component
-public class Scanning {
+public class ScanningService {
 
     @Autowired
     private SpacetraderClient spacetraderClient;
     @Autowired
-    private Contracts contracts;
+    private ContractsService contractsService;
     @Autowired
     private WaypointService waypointService;
 
 
-    public boolean surveySucceful(String shipSymbol) throws InterruptedException {
-        JSONObject contractInfo = contracts.getContractInfo();
-        Good goodForDelivery = contracts.getContractDeliveryGood(contractInfo);
-        if(!Good.isMinable(goodForDelivery)){
+    public boolean surveySuccessful(String shipSymbol) throws InterruptedException {
+        List<Contract> contracts = contractsService.getContractInfo();
+        Good goodForDelivery = contractsService.getContractDeliveryGood(contracts);
+        if (Good.isNotMinable(goodForDelivery)) {
             return false;
         }
         JSONObject cargo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("cargo");
@@ -37,7 +40,7 @@ public class Scanning {
 
         if (load < capacity) {
 
-            System.out.println("Goods needed for Contract: " + goodForDelivery.getSymbol());
+            log.info("Goods needed for Contract: {}", goodForDelivery.getSymbol());
             int goodForDeliveryCount = 0;
             while(goodForDeliveryCount <= 2) {
                 JSONArray deposits = this.seeDeposits(shipSymbol);
@@ -62,10 +65,10 @@ public class Scanning {
     public JSONArray seeDeposits(String shipSymbol) throws InterruptedException {
         JSONObject survey = new JSONObject(spacetraderClient.survey(shipSymbol));
         JSONArray deposits = survey.getJSONObject("data").getJSONArray("surveys").getJSONObject(0).getJSONArray("deposits");
-        Integer cooldown = survey.getJSONObject("data").getJSONObject("cooldown").getInt("totalSeconds");
-        System.out.println("deposits surveyed: " + deposits);
-        System.out.println(shipSymbol + " sleepy time for " + cooldown + "s");
-        sleep(cooldown * 1000);
+        int cooldown = survey.getJSONObject("data").getJSONObject("cooldown").getInt("totalSeconds");
+        log.info("deposits surveyed: {}", deposits);
+        log.info("{} sleepy time for {}s", shipSymbol, cooldown);
+        sleep(cooldown * 1000L);
         return deposits;
     }
 
@@ -75,7 +78,7 @@ public class Scanning {
             List<Waypoint> waypoints = convertJsonToEntities(waypointsJson);
             for(Waypoint waypoint: waypoints){
                 if (waypointService.findByName(waypoint.getSymbol()) != null) {
-                    System.out.println("Waypoint with symbol " + waypoint.getSymbol() + " already exists. Skipping.");
+                    log.info("Waypoint with symbol {} already exists. Skipping.", waypoint.getSymbol());
                     continue;
                 }
                 else {
