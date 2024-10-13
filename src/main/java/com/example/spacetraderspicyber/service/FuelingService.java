@@ -1,13 +1,14 @@
 package com.example.spacetraderspicyber.service;
 
 import com.example.spacetraderspicyber.client.SpacetraderClient;
-import com.example.spacetraderspicyber.model.Fuel;
-import com.example.spacetraderspicyber.model.Good;
+import com.example.spacetraderspicyber.model.*;
+import com.example.spacetraderspicyber.model.Cargo.Inventory;
+import com.example.spacetraderspicyber.model.Ship.ShipData;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Slf4j
 @Component
@@ -17,11 +18,11 @@ public class FuelingService {
     private SpacetraderClient spacetraderClient;
 
     public void fuelShip(String shipSymbol) {
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol));
-        int fuelCapacity = shipInfo.getJSONObject("data").getJSONObject("fuel").getInt("capacity");
-        int fuelCurrent = shipInfo.getJSONObject("data").getJSONObject("fuel").getInt("current");
-        String currentLocation = shipInfo.getJSONObject("data").getJSONObject("nav").getString("waypointSymbol");
-        JSONObject waypoint = new JSONObject(spacetraderClient.getWaypoint(currentLocation)).getJSONObject("data");
+        ShipData shipInfo = spacetraderClient.seeShipDetails(shipSymbol).getData();
+        int fuelCapacity = shipInfo.getFuel().getCapacity();
+        int fuelCurrent = shipInfo.getFuel().getCurrent();
+        String currentLocation = shipInfo.getCurrentLocation();
+        Waypoint waypoint = spacetraderClient.getWaypoint(currentLocation);
         if ((fuelCurrent != fuelCapacity) && this.hasMarketplace(waypoint)) {
             spacetraderClient.dockShip(shipSymbol);
             log.info("Fueling ship {}", shipSymbol);
@@ -29,26 +30,23 @@ public class FuelingService {
             spacetraderClient.orbitShip(shipSymbol);
         }
         if (this.hasMarketplace(waypoint)) {
-            JSONArray cargoInventory = shipInfo.getJSONObject("data")
-                    .getJSONObject("cargo").getJSONArray("inventory");
+            List<Inventory> cargoInventory = shipInfo.getCargo().getInventory();
 
-            // Search for fuel item in the inventory
-            JSONObject fuelItem = null;
-            for (int i = 0; i < cargoInventory.length(); i++) {
-                JSONObject item = cargoInventory.getJSONObject(i);
-                if (item.has("symbol") && item.getString("symbol").equals("FUEL")) {
+            Inventory fuelItem = null;
+            for (Inventory item : cargoInventory) {
+                if (!item.getSymbol().isEmpty() && item.getSymbol().equals("FUEL")) {
                     fuelItem = item;
                     break;
                 }
             }
             int fuelAmount = 0;
             if (fuelItem != null) {
-                fuelAmount = fuelItem.getInt("units");
+                fuelAmount = fuelItem.getUnits();
                 log.info("The spaceship {} has {} units of fuel.", shipSymbol, fuelAmount);
             }
-            JSONObject cargo = shipInfo.getJSONObject("data").getJSONObject("cargo");
-            int capacity = cargo.getInt("capacity");
-            int load = cargo.getInt("units");
+            Cargo cargo = shipInfo.getCargo();
+            int capacity = cargo.getCapacity();
+            int load = cargo.getUnits();
 
             if (fuelAmount < 5 && capacity != load) {
                 spacetraderClient.dockShip(shipSymbol);
@@ -65,21 +63,18 @@ public class FuelingService {
             }
         }
         if ((fuelCurrent != fuelCapacity) && !this.hasMarketplace(waypoint)) {
-            JSONArray cargoInventory = shipInfo.getJSONObject("data")
-                    .getJSONObject("cargo").getJSONArray("inventory");
+            List<Inventory> cargoInventory = shipInfo.getCargo().getInventory();
 
-            // Search for fuel item in the inventory
-            JSONObject fuelItem = null;
-            for (int i = 0; i < cargoInventory.length(); i++) {
-                JSONObject item = cargoInventory.getJSONObject(i);
-                if (item.has("symbol") && item.getString("symbol").equals("FUEL")) {
+            Inventory fuelItem = null;
+            for (Inventory item : cargoInventory) {
+                if (!item.getSymbol().isEmpty() && item.getSymbol().equals("FUEL")) {
                     fuelItem = item;
                     break;
                 }
             }
             int fuelAmount = 0;
             if (fuelItem != null) {
-                fuelAmount = fuelItem.getInt("units");
+                fuelAmount = fuelItem.getUnits();
                 log.info("The spaceship {} has {} units of fuel.", shipSymbol, fuelAmount);
                 int fuelAvailable = fuelAmount * 100;
                 if (fuelAvailable < fuelCapacity - fuelCurrent) {
@@ -96,13 +91,11 @@ public class FuelingService {
         }
 
 
+    public boolean hasMarketplace(Waypoint waypoint) {
+        List<Trait> traits = waypoint.getTraits();
 
-    public boolean hasMarketplace(JSONObject waypoint) {
-        JSONArray traits = waypoint.getJSONArray("traits");
-
-        for (int i = 0; i < traits.length(); i++) {
-            JSONObject trait = traits.getJSONObject(i);
-            String symbol = trait.getString("symbol");
+        for (Trait trait : traits) {
+            String symbol = trait.getSymbol();
 
             if ("MARKETPLACE".equals(symbol)) {
                 return true;

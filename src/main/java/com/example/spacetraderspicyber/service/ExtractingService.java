@@ -1,10 +1,12 @@
 package com.example.spacetraderspicyber.service;
 
 import com.example.spacetraderspicyber.client.SpacetraderClient;
+import com.example.spacetraderspicyber.model.Cargo;
 import com.example.spacetraderspicyber.model.Contracts.Contract;
+import com.example.spacetraderspicyber.model.ExtractionReport.ExtractedResource;
 import com.example.spacetraderspicyber.model.Good;
+import com.example.spacetraderspicyber.model.Ship.ShipData;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -48,21 +50,20 @@ public class ExtractingService {
 
     public void extractMinerals(String shipSymbol, List<Contract> contracts) throws InterruptedException {
 
-        String shipInfo = spacetraderClient.seeShipDetails(shipSymbol);
+        ShipData shipData = spacetraderClient.seeShipDetails(shipSymbol).getData();
 
-        JSONObject shipData = new JSONObject(shipInfo).getJSONObject("data");
-        JSONObject cargo = shipData.getJSONObject("cargo");
+        Cargo cargo = shipData.getCargo();
         log.info("Cargo before extracting: {}", cargo);
-        int load = cargo.getInt("units");
-        int capacity = cargo.getInt("capacity");
+        int load = cargo.getUnits();
+        int capacity = cargo.getCapacity();
 
         while (load < capacity) {
-            JSONObject extracted = new JSONObject(spacetraderClient.extractMinerals(shipSymbol));
-            String extractedMineral = extracted.getJSONObject("data").getJSONObject("extraction").getJSONObject("yield").getString("symbol");
-            int yield = extracted.getJSONObject("data").getJSONObject("extraction").getJSONObject("yield").getInt("units");
+            ExtractedResource extractedResource = spacetraderClient.extractMinerals(shipSymbol).getData();
+            String extractedMineral = extractedResource.getExtraction().getYield().getSymbol();
+            int yield = extractedResource.getExtraction().getYield().getUnits();
             log.info("Extracted Mineral: {} {}", yield, extractedMineral);
             load += yield;
-            int cooldown = extracted.getJSONObject("data").getJSONObject("cooldown").getInt("totalSeconds");
+            int cooldown = extractedResource.getCooldown().getTotalSeconds();
             log.info("{} sleepy time for: {}s", shipSymbol, cooldown);
             sleep(cooldown * 1000L);
 
@@ -74,7 +75,7 @@ public class ExtractingService {
             }
         }
 
-        String status = shipData.getJSONObject("nav").getString("status");
+        String status = shipData.getNav().getStatus();
 
         if (!status.equals("DOCKED")) {
             spacetraderClient.dockShip(shipSymbol);

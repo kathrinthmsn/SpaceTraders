@@ -2,19 +2,18 @@ package com.example.spacetraderspicyber.service;
 
 import com.example.spacetraderspicyber.client.SpacetraderClient;
 import com.example.spacetraderspicyber.model.*;
+import com.example.spacetraderspicyber.model.Market.MarketData;
+import com.example.spacetraderspicyber.model.Market.MarketData.TradeItem;
+import com.example.spacetraderspicyber.model.Ship.ShipData;
+import com.example.spacetraderspicyber.model.Ship.ShipData.Nav;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Type;
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -36,8 +35,8 @@ public class MarketSearchService {
     private WaypointService waypointService;
 
     public void goToMarket(String shipSymbol, Good good) throws InterruptedException {
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("nav");
-        String currentLocation = shipInfo.getString("waypointSymbol");
+        Nav shipInfo = spacetraderClient.seeShipDetails(shipSymbol).getData().getNav();
+        String currentLocation = shipInfo.getWaypointSymbol();
         log.info("{} currently located at: {}", shipSymbol, currentLocation);
 
         List<Market> markets = marketService.findMarketsByGoodsToSell(good.getSymbol());
@@ -58,12 +57,11 @@ public class MarketSearchService {
     }
 
 
-    public boolean hasMarketplace(JSONObject waypoint) {
-        JSONArray traits = waypoint.getJSONArray("traits");
+    public boolean hasMarketplace(Waypoint waypoint) {
+        List<Trait> traits = waypoint.getTraits();
 
-        for (int i = 0; i < traits.length(); i++) {
-            JSONObject trait = traits.getJSONObject(i);
-            String symbol = trait.getString("symbol");
+        for (Trait trait : traits) {
+            String symbol = trait.getSymbol();
 
             if ("MARKETPLACE".equals(symbol)) {
                 return true;
@@ -73,48 +71,35 @@ public class MarketSearchService {
         return false;
     }
 
-
-    private static LocalDateTime getLocalDateTimeFromJson(String json, String key) {
-        String timestampString = new JSONObject(json).getJSONObject("data").getJSONObject("nav").getJSONObject("route").getString(key);
-        return LocalDateTime.parse(timestampString, DateTimeFormatter.ISO_DATE_TIME);
-    }
-
-    private static long calculateDurationInSeconds(LocalDateTime departureTime, LocalDateTime arrivalTime) {
-        Duration duration = Duration.between(departureTime, arrivalTime);
-        return duration.getSeconds();
-    }
-
     public void marketResearch(String shipSymbol) throws InterruptedException {
         while (true) {
             List<Market> allMarkets = marketService.findAll();
-            for (int i = 0; i < allMarkets.size(); i++) {
-                Market closestMarket = findClosestMarket(allMarkets, shipSymbol);
-                allMarkets.remove(closestMarket);
-                navigateWithoutFueling(closestMarket, shipSymbol);
-                JSONObject marketData = new JSONObject(spacetraderClient.viewMarketData(closestMarket.getSymbol()));
-                this.updateTradeGoods(marketData);
-            }
+            Market closestMarket = findClosestMarket(allMarkets, shipSymbol);
+            allMarkets.remove(closestMarket);
+            navigateWithoutFueling(closestMarket, shipSymbol);
+            MarketData marketData = spacetraderClient.viewMarketData(closestMarket.getSymbol()).getData();
+            this.updateTradeGoods(marketData);
         }
     }
 
 
-    public void updateTradeGoods(JSONObject marketData) {
+    public void updateTradeGoods(MarketData marketData) {
 
-        Market market = marketService.findByName(marketData.getJSONObject("data").getString("symbol"));
+        Market market = marketService.findByName(marketData.getSymbol());
 
         if (market != null) {
-            if (marketData.getJSONObject("data").has("tradeGoods")) {
+            if (!marketData.getTradeGoods().isEmpty()) {
                 Gson gson = new Gson();
                 marketService.deleteMarket(market);
                 market.getTradeGoods().clear();
 
                 Type tradeGoodListType = new TypeToken<List<TradeGood>>() {
                 }.getType();
-                List<TradeGood> tradeGoods = gson.fromJson(marketData.getJSONObject("data").getJSONArray("tradeGoods").toString(), tradeGoodListType);
+                List<TradeGood> tradeGoods = gson.fromJson(marketData.getTradeGoods().toString(), tradeGoodListType);
                 tradeGoods.forEach(tradeGood -> tradeGood.setMarket(market));
                 market.setTradeGoods(tradeGoods);
 
-                List<String> goodsToSellSymbols = extractSymbolList(marketData.getJSONObject("data").getJSONArray("imports"), marketData.getJSONObject("data").getJSONArray("exports"), marketData.getJSONObject("data").getJSONArray("exchange"));
+                List<String> goodsToSellSymbols = extractSymbolList(marketData.getImports(), marketData.getExports(), marketData.getExchange());
                 market.setGoodsToSell(goodsToSellSymbols);
 
                 marketService.saveMarket(market);
@@ -125,36 +110,35 @@ public class MarketSearchService {
 
             log.info("Trade Goods updated for Market: {}", market.getSymbol());
         } else {
-            log.error("Market not found for symbol: {}", marketData.getJSONObject("data").getString("symbol"));
+            log.error("Market not found for symbol: {}", marketData.getSymbol());
         }
     }
 
     @Transactional
-    public void mapMarketData() {
+    public void saveMarketDataToDb() {
         for (int page = 1; page < 10; page++) {
-            JSONArray waypoints = new JSONObject(spacetraderClient.getWaypoints(page)).getJSONArray("data");
-            for (int i = 0; i < waypoints.length(); i++) {
-                JSONObject waypoint = waypoints.getJSONObject(i);
+            List<Waypoint> waypoints = spacetraderClient.getWaypoints(page).getData();
+            for (Waypoint waypoint : waypoints) {
                 if (hasMarketplace(waypoint)) {
-                    String symbol = waypoint.getString("symbol");
+                    String symbol = waypoint.getSymbol();
 
                     if (marketExistsInDb(symbol)) continue;
-                    JSONObject marketData = new JSONObject(spacetraderClient.viewMarketData(symbol));
+                    MarketData marketData = spacetraderClient.viewMarketData(symbol).getData();
                     Market market = new Market();
                     market.setSymbol(symbol);
 
                     Gson gson = new Gson();
-                    if (marketData.getJSONObject("data").has("tradeGoods")) {
+                    if (!marketData.getTradeGoods().isEmpty()) {
                         Type tradeGoodListType = new TypeToken<List<TradeGood>>() {
                         }.getType();
-                        List<TradeGood> tradeGoods = gson.fromJson(marketData.getJSONObject("data").getJSONArray("tradeGoods").toString(), tradeGoodListType);
+                        List<TradeGood> tradeGoods = gson.fromJson(marketData.getTradeGoods().toString(), tradeGoodListType);
                         tradeGoods.forEach(tradeGood -> tradeGood.setMarket(market));
                         market.setTradeGoods(tradeGoods);
                     } else {
                         market.setTradeGoods(Collections.emptyList());
                     }
 
-                    List<String> goodsToSellSymbols = extractSymbolList(marketData.getJSONObject("data").getJSONArray("imports"), marketData.getJSONObject("data").getJSONArray("exports"), marketData.getJSONObject("data").getJSONArray("exchange"));
+                    List<String> goodsToSellSymbols = extractSymbolList(marketData.getImports(), marketData.getExports(), marketData.getExchange());
                     market.setGoodsToSell(goodsToSellSymbols);
 
                     marketService.saveMarket(market);
@@ -172,24 +156,24 @@ public class MarketSearchService {
         return false;
     }
 
-    private static List<String> extractSymbolList(JSONArray imports, JSONArray exports, JSONArray exchange) {
+    private static List<String> extractSymbolList(List<TradeItem> imports, List<TradeItem> exports, List<TradeItem> exchange) {
         List<String> symbols = new ArrayList<>();
-        for (int i = 0; i < imports.length(); i++) {
-            symbols.add(imports.getJSONObject(i).getString("symbol"));
+        for (TradeItem anImport : imports) {
+            symbols.add(anImport.getSymbol());
         }
-        for (int i = 0; i < exports.length(); i++) {
-            symbols.add(exports.getJSONObject(i).getString("symbol"));
+        for (TradeItem export : exports) {
+            symbols.add(export.getSymbol());
         }
-        for (int i = 0; i < exchange.length(); i++) {
-            symbols.add(exchange.getJSONObject(i).getString("symbol"));
+        for (TradeItem tradeItem : exchange) {
+            symbols.add(tradeItem.getSymbol());
         }
         return symbols;
     }
 
 
     public void navigateToMarket(Market market, String shipSymbol) throws InterruptedException {
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("nav");
-        String currentLocation = shipInfo.getString("waypointSymbol");
+        Nav shipInfo = spacetraderClient.seeShipDetails(shipSymbol).getData().getNav();
+        String currentLocation = shipInfo.getWaypointSymbol();
         if (!currentLocation.equals(market.getSymbol())) {
             spacetraderClient.orbitShip(shipSymbol);
             fuelingService.fuelShip(shipSymbol);
@@ -200,16 +184,14 @@ public class MarketSearchService {
     }
 
     public void navigateWithoutFueling(Market market, String shipSymbol) throws InterruptedException {
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("nav");
-        String currentLocation = shipInfo.getString("waypointSymbol");
+        String currentLocation = spacetraderClient.seeShipDetails(shipSymbol).getData().getCurrentLocation();
         if (!currentLocation.equals(market.getSymbol())) {
             goToWaypoint(market.getSymbol(), shipSymbol);
         }
     }
 
     public void navigateToWaypoint(Waypoint waypoint, String shipSymbol) throws InterruptedException {
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("nav");
-        String currentLocation = shipInfo.getString("waypointSymbol");
+        String currentLocation = spacetraderClient.seeShipDetails(shipSymbol).getData().getCurrentLocation();
         if (!currentLocation.equals(waypoint.getSymbol())) {
             spacetraderClient.orbitShip(shipSymbol);
             fuelingService.fuelShip(shipSymbol);
@@ -221,28 +203,24 @@ public class MarketSearchService {
 
 
     private void goToWaypoint(String waypoint, String shipSymbol) throws InterruptedException {
-        String json = spacetraderClient.navigateToWaypoint(shipSymbol, WaypointSymbol.builder().waypointSymbol(waypoint).build());
-        LocalDateTime departureTime = getLocalDateTimeFromJson(json, "departureTime");
-        LocalDateTime arrivalTime = getLocalDateTimeFromJson(json, "arrival");
+        ShipNavigation navigation = spacetraderClient.navigateToWaypoint(shipSymbol, WaypointSymbol.builder().waypointSymbol(waypoint).build());
 
-        long durationInSeconds = calculateDurationInSeconds(departureTime, arrivalTime);
+        long durationInSeconds = navigation.calculateRouteTime();
         log.info("{} navigates to: {}", shipSymbol, waypoint);
         log.info("{} sleepy time for: {}s", shipSymbol, durationInSeconds);
         sleep(durationInSeconds * 1000);
     }
 
     public void findFuelStop(String shipSymbol, String destinationSymbol) throws InterruptedException {
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data");
-        int currentLocationXCoordinate = shipInfo.getJSONObject("nav").getJSONObject("route").getJSONObject("destination").getInt("x");
-        int currentLocationYCoordinate = shipInfo.getJSONObject("nav").getJSONObject("route").getJSONObject("destination").getInt("y");
+        ShipData shipInfo = spacetraderClient.seeShipDetails(shipSymbol).getData();
 
-        JSONObject waypointDestinationJson = new JSONObject(spacetraderClient.getWaypoint(destinationSymbol)).getJSONObject("data");
-        int waypointMarketX = waypointDestinationJson.getInt("x");
-        int waypointMarketY = waypointDestinationJson.getInt("y");
+        Waypoint waypointDestination = spacetraderClient.getWaypoint(destinationSymbol);
+        int waypointMarketX = waypointDestination.getX();
+        int waypointMarketY = waypointDestination.getY();
 
-        int fuelCurrent = shipInfo.getJSONObject("fuel").getInt("current");
+        int fuelCurrent = shipInfo.getFuel().getCurrent();
 
-        double distanceToMarket = this.calculateDistance(currentLocationXCoordinate, currentLocationYCoordinate, waypointMarketX, waypointMarketY);
+        double distanceToMarket = shipInfo.calculateDistanceToCurrentLocation(waypointMarketX, waypointMarketY);
 
         if (distanceToMarket > fuelCurrent) {
 
@@ -258,18 +236,17 @@ public class MarketSearchService {
                     double smallestDistanceFromWaypointToDestination = Double.MAX_VALUE;
                     Market closestMarket = null;
                     List<Waypoint> allWaypoints = waypointService.findAll();
-                    String currentLocation = shipInfo.getJSONObject("nav").getString("waypointSymbol");
+                    String currentLocation = shipInfo.getNav().getWaypointSymbol();
                     Waypoint currentLocationWaypoint = waypointService.findByName(currentLocation);
-                    Waypoint waypointDestination = waypointService.findByName(destinationSymbol);
                     allWaypoints.removeAll(List.of(currentLocationWaypoint, waypointDestination));
 
                     for (Waypoint waypointFromDb : allWaypoints) {
 
-                        double distanceToWaypoint = this.calculateDistanceToWaypoint(waypointFromDb, currentLocationXCoordinate, currentLocationYCoordinate);
+                        double distanceToWaypoint = shipInfo.calculateDistanceToCurrentLocation(waypointFromDb.getX(), waypointFromDb.getY());
 
                         if (distanceToWaypoint < distanceToMarket) {
 
-                            distanceFromWaypointToDestination = this.calculateDistanceToWaypoint(waypointFromDb, waypointDestinationJson);
+                            distanceFromWaypointToDestination = this.calculateDistanceToWaypoint(waypointFromDb, waypointDestination);
 
                             if (distanceFromWaypointToDestination < distanceToMarket) {
 
@@ -298,33 +275,25 @@ public class MarketSearchService {
                         this.navigateToWaypoint(nextStop, shipSymbol);
                         fuelingService.fuelShip(shipSymbol);
                     }
-                    shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data");
-                    fuelCurrent = shipInfo.getJSONObject("fuel").getInt("current");
+                    shipInfo = spacetraderClient.seeShipDetails(shipSymbol).getData();
+                    fuelCurrent = shipInfo.getFuel().getCurrent();
                     if (fuelCurrent > smallestDistanceFromWaypointToDestination) {
                         return;
                     }
-                    currentLocationXCoordinate = shipInfo.getJSONObject("nav").getJSONObject("route").getJSONObject("destination").getInt("x");
-                    currentLocationYCoordinate = shipInfo.getJSONObject("nav").getJSONObject("route").getJSONObject("destination").getInt("y");
-                    distanceToMarket = this.calculateDistanceToWaypoint(waypointDestination, currentLocationXCoordinate, currentLocationYCoordinate);
+                    distanceToMarket = shipInfo.calculateDistanceToCurrentLocation(waypointDestination.getX(), waypointDestination.getY());
                 }
             }
         }
     }
 
 
-    public Market findClosestMarket(List<Market> markets, String shipSymbol) throws InterruptedException {
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data");
-        int currentLocationXCoordinate = shipInfo.getJSONObject("nav").getJSONObject("route").getJSONObject("destination").getInt("x");
-        int currentLocationYCoordinate = shipInfo.getJSONObject("nav").getJSONObject("route").getJSONObject("destination").getInt("y");
+    public Market findClosestMarket(List<Market> markets, String shipSymbol) {
+        ShipData shipInfo = spacetraderClient.seeShipDetails(shipSymbol).getData();
         Market closestMarket = null;
         double distance = Double.MAX_VALUE;
         for (Market market : markets) {
-            sleep(1500);
-            JSONObject waypointMarket = new JSONObject(spacetraderClient.getWaypoint(market.getSymbol())).getJSONObject("data");
-            int waypointMarketX = waypointMarket.getInt("x");
-            int waypointMarketY = waypointMarket.getInt("y");
-
-            double distanceToMarket = this.calculateDistance(currentLocationXCoordinate, currentLocationYCoordinate, waypointMarketX, waypointMarketY);
+            Waypoint waypointMarket = spacetraderClient.getWaypoint(market.getSymbol());
+            double distanceToMarket = shipInfo.calculateDistanceToCurrentLocation(waypointMarket.getX(), waypointMarket.getY());
             if (distanceToMarket < distance) {
                 closestMarket = market;
                 distance = distanceToMarket;
@@ -334,26 +303,16 @@ public class MarketSearchService {
     }
 
 
-    public double calculateDistanceToWaypoint(Waypoint waypoint, JSONObject waypointDestinationJson) throws InterruptedException {
-        int waypointMarketXDestination = waypointDestinationJson.getInt("x");
-        int waypointMarketYDestination = waypointDestinationJson.getInt("y");
+    public double calculateDistanceToWaypoint(Waypoint waypoint, Waypoint waypointDestination) {
+        int waypointMarketXDestination = waypointDestination.getX();
+        int waypointMarketYDestination = waypointDestination.getY();
 
-        JSONObject waypointJson = new JSONObject(spacetraderClient.getWaypoint(waypoint.getSymbol())).getJSONObject("data");
-        int waypointMarketX = waypointJson.getInt("x");
-        int waypointMarketY = waypointJson.getInt("y");
+        Waypoint waypointData = spacetraderClient.getWaypoint(waypoint.getSymbol());
+        int waypointMarketX = waypointData.getX();
+        int waypointMarketY = waypointData.getY();
 
         return this.calculateDistance(waypointMarketXDestination, waypointMarketYDestination, waypointMarketX, waypointMarketY);
     }
-
-    public double calculateDistanceToWaypoint(Waypoint waypointDestination, Integer currentX, Integer currentY) throws InterruptedException {
-        sleep(500);
-        JSONObject waypointDestinationJson = new JSONObject(spacetraderClient.getWaypoint(waypointDestination.getSymbol())).getJSONObject("data");
-        int waypointMarketXDestination = waypointDestinationJson.getInt("x");
-        int waypointMarketYDestination = waypointDestinationJson.getInt("y");
-
-        return this.calculateDistance(waypointMarketXDestination, waypointMarketYDestination, currentX, currentY);
-    }
-
 
     private double calculateDistance(double x1, double y1, double x2, double y2) {
         return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));

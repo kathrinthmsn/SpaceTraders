@@ -1,11 +1,9 @@
 package com.example.spacetraderspicyber.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.gson.Gson;
 import jakarta.persistence.*;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.json.JSONObject;
 
 import java.util.List;
 
@@ -14,15 +12,55 @@ import java.util.List;
 @Getter
 @Setter
 public class Market {
+
+    private MarketData data;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Column(unique = true)
-    private String symbol;
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @Embeddable
+    public static class MarketData {
+        @Column(unique = true)
+        private String symbol;
+        @ElementCollection
+        private List<TradeItem> exports;
+        @ElementCollection
+        private List<TradeItem> imports;
+        @ElementCollection
+        private List<TradeItem> exchange;
+        @ElementCollection
+        private List<Transaction> transactions;
+        @ElementCollection
+        private List<TradeGood> tradeGoods;
+
+        @Getter
+        @Setter
+        @NoArgsConstructor
+        @Embeddable
+        public static class TradeItem {
+            private String symbol;
+            private String name;
+            private String description;
+        }
+    }
+
     @ElementCollection
     private List<String> goodsToSell;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "market", fetch = FetchType.EAGER)
     private List<TradeGood> tradeGoods;
+
+    public String getSymbol() {
+        return data.getSymbol();
+    }
+
+    public void setSymbol(String symbol) {
+        data.setSymbol(symbol);
+    }
 }
 
 

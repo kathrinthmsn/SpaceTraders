@@ -1,7 +1,7 @@
 package com.example.spacetraderspicyber.client;
 
-import org.json.JSONException;
-import org.json.JSONObject;
+import com.example.spacetraderspicyber.model.Agent;
+import com.example.spacetraderspicyber.model.Agent.AgentData;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -19,10 +19,10 @@ class SpacetraderClientIT {
     SpacetraderClient spacetraderClient;
 
     @Test
-    void testSeeAgent() throws JSONException {
-        String response = spacetraderClient.seeAgent();
-        JSONObject agentJson = new JSONObject(spacetraderClient.seeAgent()).getJSONObject("data");
-        String agentName = agentJson.getString("symbol");
+    void testSeeAgent() {
+        Agent response = spacetraderClient.seeAgent();
+        AgentData agent = spacetraderClient.seeAgent().getData();
+        String agentName = agent.getSymbol();
 
         assertNotNull(response);
         assertEquals(agentName, "SPICYBER");

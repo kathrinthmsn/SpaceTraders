@@ -1,11 +1,13 @@
 package com.example.spacetraderspicyber.service;
 
 import com.example.spacetraderspicyber.client.SpacetraderClient;
+import com.example.spacetraderspicyber.model.Cargo;
+import com.example.spacetraderspicyber.model.Contract.ContractData;
 import com.example.spacetraderspicyber.model.Contracts.Contract;
 import com.example.spacetraderspicyber.model.Good;
+import com.example.spacetraderspicyber.model.Transaction;
 import com.example.spacetraderspicyber.model.Waypoint;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -48,7 +50,7 @@ public class ContractsService {
     }
 
 
-    public void checkContractValidity() throws InterruptedException {
+    public void checkContractValidity() {
         List<Contract> contracts = this.getContractInfo();
         Contract lastContract = contracts.get(contracts.size() - 1);
         Instant deadline = Instant.parse(lastContract.getTerms().getDeadline());
@@ -75,17 +77,17 @@ public class ContractsService {
 
 
     public void purchaseCargoForContract(String shipSymbol) throws InterruptedException {
-        JSONObject cargo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("cargo");
-        int capacity = cargo.getInt("capacity");
-        int load = cargo.getInt("units");
+        Cargo cargo = spacetraderClient.seeShipDetails(shipSymbol).getData().getCargo();
+        int capacity = cargo.getCapacity();
+        int load = cargo.getUnits();
         List<Contract> contracts = this.getContractInfo();
         Good goodForDelivery = this.getGoodLeftToDeliverForContract(contracts);
         spacetraderClient.dockShip(shipSymbol);
         if (goodForDelivery.getUnits() > capacity - load) {
             goodForDelivery.setUnits(capacity - load);
         }
-        JSONObject purchase = new JSONObject(spacetraderClient.purchaseCargo(shipSymbol, goodForDelivery)).getJSONObject("data").getJSONObject("transaction");
-        int purchasePrice = purchase.getInt("totalPrice");
+        Transaction purchase = spacetraderClient.purchaseCargo(shipSymbol, goodForDelivery).getData().getTransaction();
+        int purchasePrice = purchase.getTotalPrice();
         log.info("Purchasing Good for Contract: {} for {}$", goodForDelivery, purchasePrice);
         this.deliverGoodsForContract(shipSymbol, goodForDelivery, contracts.get(contracts.size() - 1));
     }
@@ -94,8 +96,7 @@ public class ContractsService {
         spacetraderClient.orbitShip(shipSymbol);
         fuelingService.fuelShip(shipSymbol);
         String destination = contract.getTerms().getDeliver().get(0).getDestinationSymbol();
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("nav");
-        String currentLocation = shipInfo.getString("waypointSymbol");
+        String currentLocation = spacetraderClient.seeShipDetails(shipSymbol).getData().getCurrentLocation();
         if (!currentLocation.equals(destination)) {
             Waypoint waypoint = waypointService.findByName(destination);
             marketSearchService.navigateToWaypoint(waypoint, shipSymbol);
@@ -108,11 +109,10 @@ public class ContractsService {
         this.deliverGoodsForContracts(shipSymbol, GoodToDeliver, contract);
 
         spacetraderClient.orbitShip(shipSymbol);
-        return;
     }
 
     //TODO: Variable Shipsymbol
-    public void deliverGoodsForContracts(String shipSymbol, Good good, Contract contract) throws InterruptedException {
+    public void deliverGoodsForContracts(String shipSymbol, Good good, Contract contract) {
         String contractId = contract.getId();
         good.setShipSymbol(shipSymbol);
         good.setUnits(good.getUnits());
@@ -128,8 +128,8 @@ public class ContractsService {
         if (unitsFulfilled >= unitsRequired) {
             spacetraderClient.fulfillContracts(contractId);
             log.info("Contract fulfilled: {}", contractId);
-            JSONObject newContract = new JSONObject(spacetraderClient.negotiateNewContract(shipSymbol)).getJSONObject("data").getJSONObject("contract");
-            String newContractId = newContract.getString("id");
+            ContractData newContract = spacetraderClient.negotiateNewContract(shipSymbol).getData();
+            String newContractId = newContract.getId();
             this.acceptContract(newContractId);
         }
     }

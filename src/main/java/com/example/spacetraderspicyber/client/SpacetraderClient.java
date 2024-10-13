@@ -16,7 +16,7 @@ public interface SpacetraderClient {
     String registerAgent(Agent agent);
 
     @GetMapping(value = "/v2/my/agent", produces = "application/json")
-    String seeAgent();
+    Agent seeAgent();
 
     @GetMapping(value = "/v2/my/ships", produces = "application/json")
     String seeShips();
@@ -24,22 +24,22 @@ public interface SpacetraderClient {
     //Ship
 
     @GetMapping(value = "/v2/my/ships/{ship}", produces = "application/json")
-    String seeShipDetails(@PathVariable("ship") String ship);
+    Ship seeShipDetails(@PathVariable("ship") String ship);
 
     @RequestMapping(value =  "/v2/my/ships/{ship}/nav",
             method = RequestMethod.PATCH,
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    String changeFlightMode(@PathVariable("ship") String ship, @RequestBody FlightMode flightMode);
+    void changeFlightMode(@PathVariable("ship") String ship, @RequestBody FlightMode flightMode);
 
     @PostMapping(value = "/v2/my/ships/{ship}/survey", produces = "application/json")
-    String survey(@PathVariable("ship") String ship);
+    SurveyResponse survey(@PathVariable("ship") String ship);
 
     @PostMapping(value = "/v2/my/ships/{ship}/dock")
     void dockShip(@PathVariable("ship") String ship);
 
     @PostMapping(value = "/v2/my/ships/{ship}/extract")
-    String extractMinerals(@PathVariable("ship") String ship);
+    ExtractionReport extractMinerals(@PathVariable("ship") String ship);
 
     @PostMapping(value = "/v2/my/ships/{ship}/refuel")
     void fuelShip(@PathVariable("ship") String ship);
@@ -54,13 +54,13 @@ public interface SpacetraderClient {
     String scanSystems(@PathVariable("ship") String ship);
 
     @GetMapping(value = "/v2/my/ships/{ship}/cargo")
-    String shipCargo(@PathVariable("ship") String ship);
+    Cargo shipCargo(@PathVariable("ship") String ship);
 
     @PostMapping(value = "/v2/my/ships/{ship}/sell", produces = "application/json")
     void sellCargo(@PathVariable("ship") String ship, Good good);
 
     @PostMapping(value = "/v2/my/ships/{ship}/purchase", produces = "application/json")
-    String purchaseCargo(@PathVariable("ship") String ship, Good good);
+    Purchase purchaseCargo(@PathVariable("ship") String ship, Good good);
 
     @PostMapping(value = "/v2/my/ships/{ship}/jettison", produces = "application/json")
     void jettisonCargo(@PathVariable("ship") String ship, Good good);
@@ -79,7 +79,7 @@ public interface SpacetraderClient {
     void acceptContracts(@PathVariable("contractId") String contractId);
 
     @PostMapping(value = "/v2/my/ships/{ship}/navigate", produces = "application/json")
-    String navigateToWaypoint(@PathVariable("ship") String ship, WaypointSymbol waypointSymbol);
+    ShipNavigation navigateToWaypoint(@PathVariable("ship") String ship, WaypointSymbol waypointSymbol);
 
     @PostMapping(value = "/v2/my/contracts/{contractId}/deliver", produces = "application/json")
     void deliverGoodsForContracts(@PathVariable("contractId") String contractId, Good good);
@@ -88,26 +88,26 @@ public interface SpacetraderClient {
     void fulfillContracts(@PathVariable("contractId") String contractId);
 
     @PostMapping(value = "/v2/my/ships/{ship}/negotiate/contract", produces = "application/json")
-    String negotiateNewContract(@PathVariable("ship") String ship);
+    Contract negotiateNewContract(@PathVariable("ship") String ship);
 
 
     //System
 
     @GetMapping(value = "/v2/systems/{system}/waypoints", produces = "application/json")
-    String getWaypoints(
+    Waypoints getWaypoints(
             @PathVariable("system") String system,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "limit", defaultValue = "20") int limit
     );
 
-    default String getWaypoints(int page) {
+    default Waypoints getWaypoints(int page) {
         return getWaypoints(STARTING_SYSTEM, page, 20);
     }
 
     @GetMapping(value = "/v2/systems/{system}/waypoints", produces = "application/json")
-    String getAsteroidFieldLocation(@PathVariable(value = "system", required = false) String system, @RequestParam(value = "type") String type);
+    Waypoints getAsteroidFieldLocation(@PathVariable(value = "system", required = false) String system, @RequestParam(value = "type") String type);
 
-    default String getAsteroidFieldLocation() {
+    default Waypoints getAsteroidFieldLocation() {
         return getAsteroidFieldLocation(STARTING_SYSTEM, "ENGINEERED_ASTEROID");
     }
 
@@ -119,16 +119,16 @@ public interface SpacetraderClient {
     }
 
     @GetMapping(value = "/v2/systems/{system}/waypoints/{waypoint}/market", produces = "application/json")
-    String viewMarketData(@PathVariable("system") String system, @PathVariable("waypoint") String waypoint);
+    Market viewMarketData(@PathVariable("system") String system, @PathVariable("waypoint") String waypoint);
 
-    default String viewMarketData(String waypoint) {
+    default Market viewMarketData(String waypoint) {
         return viewMarketData(STARTING_SYSTEM, waypoint);
     }
 
     @GetMapping(value = "/v2/systems/{system}/waypoints/{waypoint}", produces = "application/json")
-    String getWaypoint(@PathVariable("system") String system, @PathVariable("waypoint") String waypoint);
+    Waypoint getWaypoint(@PathVariable("system") String system, @PathVariable("waypoint") String waypoint);
 
-    default String getWaypoint(String waypoint) {
+    default Waypoint getWaypoint(String waypoint) {
         return getWaypoint(STARTING_SYSTEM, waypoint);
     }
 }

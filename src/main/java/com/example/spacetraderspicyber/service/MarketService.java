@@ -6,7 +6,6 @@ import com.example.spacetraderspicyber.repositories.MarketRepository;
 import com.example.spacetraderspicyber.repositories.TradeGoodRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Set;
@@ -25,7 +24,7 @@ public class MarketService {
     }
 
     public Market findByName(String symbol){
-        return marketRepository.findBySymbol(symbol);
+        return marketRepository.findByData_Symbol(symbol);
     }
 
 

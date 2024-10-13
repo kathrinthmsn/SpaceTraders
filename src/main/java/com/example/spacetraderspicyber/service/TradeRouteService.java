@@ -1,12 +1,9 @@
 package com.example.spacetraderspicyber.service;
 
 import com.example.spacetraderspicyber.client.SpacetraderClient;
-import com.example.spacetraderspicyber.model.Fuel;
-import com.example.spacetraderspicyber.model.Good;
-import com.example.spacetraderspicyber.model.Market;
-import com.example.spacetraderspicyber.model.TradeGood;
+import com.example.spacetraderspicyber.model.*;
+import com.example.spacetraderspicyber.model.Ship.ShipData;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -44,15 +41,15 @@ public class TradeRouteService {
 
 
         log.info("Best Trade : {} Purchase Price {} Sell Price {}", bestTrade, lowestPurchasePrice.getPurchasePrice(), highestSellPrice.getSellPrice());
-        JSONObject cargo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data").getJSONObject("cargo");
-        int capacity = cargo.getInt("capacity");
-        int load = cargo.getInt("units");
+        Cargo cargo = spacetraderClient.seeShipDetails(shipSymbol).getData().getCargo();
+        int capacity = cargo.getCapacity();
+        int load = cargo.getUnits();
         int tradeGoodsBought = Math.min(lowestPurchasePrice.getTradeVolume(), capacity - load);
         Good goodForTrading = Good.builder().symbol(lowestPurchasePrice.getSymbol()).units(tradeGoodsBought).build();
 
         if(capacity - load >= 10) {
             marketSearchService.navigateToMarket(lowestPurchasePrice.getMarket(), shipSymbol);
-            marketSearchService.updateTradeGoods(new JSONObject(spacetraderClient.viewMarketData(lowestPurchasePrice.getMarket().getSymbol())));
+            marketSearchService.updateTradeGoods(spacetraderClient.viewMarketData(lowestPurchasePrice.getMarket().getSymbol()).getData());
             Market market = marketService.findByName(lowestPurchasePrice.getMarket().getSymbol());
             TradeGood updatedTradeGood = findTradeGoodBySymbol(market.getTradeGoods(), lowestPurchasePrice.getSymbol()).get();
             if(updatedTradeGood.getPurchasePrice() > highestSellPrice.getSellPrice()){
@@ -67,7 +64,7 @@ public class TradeRouteService {
         }
 
         marketSearchService.navigateToMarket(highestSellPrice.getMarket(), shipSymbol);
-        marketSearchService.updateTradeGoods(new JSONObject(spacetraderClient.viewMarketData(highestSellPrice.getMarket().getSymbol())));
+        marketSearchService.updateTradeGoods(spacetraderClient.viewMarketData(highestSellPrice.getMarket().getSymbol()).getData());
         Market market = marketService.findByName(highestSellPrice.getMarket().getSymbol());
         TradeGood updatedTradeGood = findTradeGoodBySymbol(market.getTradeGoods(), highestSellPrice.getSymbol()).get();
         if(updatedTradeGood.getSellPrice() < lowestPurchasePrice.getPurchasePrice()){
@@ -76,7 +73,7 @@ public class TradeRouteService {
                 TradeGood tradeGoodWithSecondHighestSellPrice = tradeGoodWithSecondHighestSellPriceOpt.get();
                 if(tradeGoodWithSecondHighestSellPrice.getSellPrice() > highestSellPrice.getSellPrice()){
                     marketSearchService.navigateToMarket(tradeGoodWithSecondHighestSellPrice.getMarket(), shipSymbol);
-                    marketSearchService.updateTradeGoods(new JSONObject(spacetraderClient.viewMarketData(tradeGoodWithSecondHighestSellPrice.getMarket().getSymbol())));
+                    marketSearchService.updateTradeGoods(spacetraderClient.viewMarketData(tradeGoodWithSecondHighestSellPrice.getMarket().getSymbol()).getData());
                     this.sellTradeGood(shipSymbol, goodForTrading, tradeGoodsBought, lowestPurchasePrice, capacity, load);
                 }
               }
@@ -145,35 +142,28 @@ public class TradeRouteService {
     }
 
     //TODO: Variable ships
-    public Market findClosestMarket(List<Market> markets, String shipSymbol) throws InterruptedException {
-        JSONObject shipInfo = new JSONObject(spacetraderClient.seeShipDetails(shipSymbol)).getJSONObject("data");
-        int currentLocationXCoordinate = shipInfo.getJSONObject("nav").getJSONObject("route").getJSONObject("destination").getInt("x");
-        int currentLocationYCoordinate = shipInfo.getJSONObject("nav").getJSONObject("route").getJSONObject("destination").getInt("y");
+    public Market findClosestMarket(List<Market> markets, String shipSymbol) {
+        ShipData shipInfo = spacetraderClient.seeShipDetails(shipSymbol).getData();
         Market closestMarket = null;
         double distance = Double.MAX_VALUE;
         for(Market market: markets) {
-            int waypointMarketX = new JSONObject(spacetraderClient.getWaypoint(market.getSymbol())).getJSONObject("data").getInt("x");
-            int waypointMarketY = new JSONObject(spacetraderClient.getWaypoint(market.getSymbol())).getJSONObject("data").getInt("y");
+            int waypointMarketX = spacetraderClient.getWaypoint(market.getSymbol()).getX();
+            int waypointMarketY = spacetraderClient.getWaypoint(market.getSymbol()).getY();
 
-            double distanceToMarket = this.calculateDistance(currentLocationXCoordinate, currentLocationYCoordinate, waypointMarketX, waypointMarketY);
+            double distanceToMarket = shipInfo.calculateDistanceToCurrentLocation(waypointMarketX, waypointMarketY);
             if(distanceToMarket < distance) {
                 closestMarket = market;
                 distance = distanceToMarket;
             }
         }
-        int fuelCapacity = shipInfo.getJSONObject("fuel").getInt("capacity");
-        int fuelCurrent = shipInfo.getJSONObject("fuel").getInt("current");
+        int fuelCapacity = shipInfo.getFuel().getCapacity();
+        int fuelCurrent = shipInfo.getFuel().getCurrent();
         if(distance > fuelCurrent && shipSymbol.equals("SPICYBER-1") || shipSymbol.equals("SPICYBER-6") || shipSymbol.equals("SPICYBER-4") || shipSymbol.equals("SPICYBER-5")) {
             spacetraderClient.dockShip(shipSymbol);
             spacetraderClient.fuelShip(shipSymbol, Fuel.builder().units(fuelCapacity - fuelCurrent).fromCargo(true).build());
             spacetraderClient.orbitShip(shipSymbol);
         }
         return closestMarket;
-    }
-
-    private double calculateDistance(double x1, double y1, double x2, double y2) {
-        // Implement your distance calculation logic here (e.g., Euclidean distance)
-        return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
     }
 
 }
