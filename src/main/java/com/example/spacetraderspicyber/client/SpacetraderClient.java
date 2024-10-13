@@ -6,11 +6,11 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
-@FeignClient(name = "api", url = "https://api.spacetraders.io/", configuration = FeignConfig.class)
+@FeignClient(name = "api", url = "${spacetrader.api.base-url}", configuration = FeignConfig.class)
 public interface SpacetraderClient {
 
     //TODO: get system info from endpoint
-    String STARTING_SYSTEM = "X1-N57";
+    String STARTING_SYSTEM = "X1-HJ59";
 
     @PostMapping(value = "/v2/register", produces = "application/json")
     String registerAgent(Agent agent);
