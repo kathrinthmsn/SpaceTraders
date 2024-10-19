@@ -19,45 +19,42 @@ public class SellingService {
     @Autowired
     private ContractsService contractsService;
     @Autowired
-    private FuelingService fuelingService;
-    @Autowired
-    private MarketService marketService;
-    @Autowired
     private MarketSearchService marketSearchService;
-
 
 
     public void selling(String shipSymbol) throws InterruptedException {
         List<Inventory> inventory = spacetraderClient.shipCargo(shipSymbol).getInventory();
-
         List<Contract> contracts = contractsService.getContractInfo();
-        Good goodForDelivery = contractsService.getContractDeliveryGood(contracts);
+        Contract lastContract = contracts.get(contracts.size() - 1);
+        Good goodForContract = contractsService.getContractDeliveryGood(contracts);
+        int unitsRequired = lastContract.getTerms().getDeliver().get(0).getUnitsRequired();
+        int unitsFulfilled = lastContract.getTerms().getDeliver().get(0).getUnitsFulfilled();
+        int remainingUnitsForContract = unitsRequired - unitsFulfilled;
 
         for (Inventory item : inventory) {
-            Good good = Good.builder()
+            Good goodInCargo = Good.builder()
                     .symbol(item.getSymbol())
                     .units(item.getUnits())
                     .build();
 
-            if (!goodForDelivery.getSymbol().equals(good.getSymbol()) && !good.getSymbol().equals("FUEL")) {
-                marketSearchService.goToMarket(shipSymbol, good);
-                log.info("Selling: {}", good);
-                spacetraderClient.dockShip(shipSymbol);
-                spacetraderClient.sellCargo(shipSymbol, good);
-            }
-            // TODO: Variable for JSONObject "deliver"
-            Contract lastContract = contracts.get(contracts.size() - 1);
-            int unitsRequired = lastContract.getTerms().getDeliver().get(0).getUnitsRequired();
-            int unitsFulfilled = lastContract.getTerms().getDeliver().get(0).getUnitsFulfilled();
-            int capacity = spacetraderClient.seeShipDetails(shipSymbol).getData().getCargo().getCapacity();
-
-            if (goodForDelivery.getSymbol().equals(good.getSymbol()) && (good.getUnits() >= (unitsRequired - unitsFulfilled) || good.getUnits() >= capacity - 8)) {
-                contractsService.deliverGoodsForContract(shipSymbol, good, lastContract);
+            if (!goodForContract.getSymbol().equals(goodInCargo.getSymbol()) && !goodInCargo.getSymbol().equals("FUEL")) {
+                sellCargoAtMarket(shipSymbol, goodInCargo);
+            } else if (goodForContract.getSymbol().equals(goodInCargo.getSymbol())) {
+                int unitsToDeliver = Math.min(remainingUnitsForContract, goodInCargo.getUnits());
+                if (unitsToDeliver > 0 && goodInCargo.getUnits() >= remainingUnitsForContract) {
+                    contractsService.deliverGoodsForContract(shipSymbol, goodInCargo, lastContract);
+                    log.info("Delivering {} units of {} for contract.", unitsToDeliver, goodInCargo.getSymbol());
+                }
             }
         }
         spacetraderClient.orbitShip(shipSymbol);
+    }
 
-
+    private void sellCargoAtMarket(String shipSymbol, Good goodInCargo) throws InterruptedException {
+        marketSearchService.goToMarketForGood(shipSymbol, goodInCargo);
+        log.info("Selling: {}", goodInCargo);
+        spacetraderClient.dockShip(shipSymbol);
+        spacetraderClient.sellCargo(shipSymbol, goodInCargo);
     }
 
 }

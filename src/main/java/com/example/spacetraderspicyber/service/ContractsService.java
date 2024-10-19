@@ -6,7 +6,6 @@ import com.example.spacetraderspicyber.model.Contract.ContractData;
 import com.example.spacetraderspicyber.model.Contracts.Contract;
 import com.example.spacetraderspicyber.model.Good;
 import com.example.spacetraderspicyber.model.Transaction;
-import com.example.spacetraderspicyber.model.Waypoint;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -27,7 +26,6 @@ public class ContractsService {
     @Autowired
     private WaypointService waypointService;
 
-    //TODO: Variable for deliver Array
     public Good getContractDeliveryGood(List<Contract> contracts) {
         Contract lastContract = contracts.get(contracts.size() - 1);
         int unitsRequired = lastContract.getTerms().getDeliver().get(0).getUnitsRequired();
@@ -98,8 +96,7 @@ public class ContractsService {
         String destination = contract.getTerms().getDeliver().get(0).getDestinationSymbol();
         String currentLocation = spacetraderClient.seeShipDetails(shipSymbol).getData().getCurrentLocation();
         if (!currentLocation.equals(destination)) {
-            Waypoint waypoint = waypointService.findByName(destination);
-            marketSearchService.navigateToWaypoint(waypoint, shipSymbol);
+            waypointService.goToWaypoint(destination, shipSymbol);
         }
 
         Good GoodToDeliver = Good.builder()
@@ -111,7 +108,6 @@ public class ContractsService {
         spacetraderClient.orbitShip(shipSymbol);
     }
 
-    //TODO: Variable Shipsymbol
     public void deliverGoodsForContracts(String shipSymbol, Good good, Contract contract) {
         String contractId = contract.getId();
         good.setShipSymbol(shipSymbol);

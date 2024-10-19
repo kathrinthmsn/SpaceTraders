@@ -31,7 +31,6 @@ public class Good {
                 '}';
     }
 
-    //TODO: For Mining Gold/Silver-> go to different Asteroid
     public static boolean isNotMinable(Good goodForDelivery) {
         List<String> minableGoods = List.of("ALUMINUM_ORE", "COPPER_ORE","IRON_ORE","SILVER_ORE", "GOLD_ORE", "PLATINUM_ORE", "ICE_WATER", "QUARTZ_SAND", "SILICON_CRYSTALS");
         return !minableGoods.contains(goodForDelivery.tradeSymbol);

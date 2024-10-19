@@ -44,17 +44,21 @@ public class MarketService {
         tradeGoodRepository.deleteAll(tradeGoods);
     }
 
-    public Set<String> findAllUniqueSymbols() {
-        // Retrieve all unique symbols using Java streams
+    public void deleteAllTradeGoods() {
+        tradeGoodRepository.deleteAll();
+    }
+
+    public Set<String> findAllUniqueTradeGoods() {
         return tradeGoodRepository.findAll()
                 .stream()
                 .map(TradeGood::getSymbol)
                 .collect(Collectors.toSet());
     }
 
-    public List<TradeGood> findBySymbol(String symbol) {
+    public List<TradeGood> findByTradeGoodSymbol(String symbol) {
         return tradeGoodRepository.findBySymbol(symbol);
     }
+
     public void saveMarket(Market market){
         marketRepository.save(market);
     }

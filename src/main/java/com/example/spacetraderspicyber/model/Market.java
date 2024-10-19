@@ -5,7 +5,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Entity
 @Table
@@ -13,6 +16,7 @@ import java.util.List;
 @Setter
 public class Market {
 
+    @Embedded
     private MarketData data;
 
     @Id
@@ -26,16 +30,16 @@ public class Market {
     public static class MarketData {
         @Column(unique = true)
         private String symbol;
-        @ElementCollection
+        @ElementCollection(fetch = FetchType.EAGER)
         private List<TradeItem> exports;
-        @ElementCollection
+        @ElementCollection(fetch = FetchType.EAGER)
         private List<TradeItem> imports;
-        @ElementCollection
+        @ElementCollection(fetch = FetchType.EAGER)
         private List<TradeItem> exchange;
         @ElementCollection
         private List<Transaction> transactions;
-        @ElementCollection
-        private List<TradeGood> tradeGoods;
+        @OneToMany(cascade = CascadeType.ALL, mappedBy = "market", fetch = FetchType.EAGER)
+        private List<TradeGood> tradeGoods = new ArrayList<>();
 
         @Getter
         @Setter
@@ -49,10 +53,7 @@ public class Market {
     }
 
     @ElementCollection
-    private List<String> goodsToSell;
-
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "market", fetch = FetchType.EAGER)
-    private List<TradeGood> tradeGoods;
+    private List<String> goodsToSell = new ArrayList<>();
 
     public String getSymbol() {
         return data.getSymbol();
@@ -60,6 +61,21 @@ public class Market {
 
     public void setSymbol(String symbol) {
         data.setSymbol(symbol);
+    }
+
+    public void initializeGoodsToSell() {
+        if (data != null) {
+            goodsToSell = Stream.of(data.getExchange(), data.getExports(), data.getImports())
+                    .flatMap(List::stream)
+                    .map(MarketData.TradeItem::getSymbol)
+                    .distinct()
+                    .collect(Collectors.toList());
+        }
+    }
+
+    public void setData(MarketData data) {
+        this.data = data;
+        initializeGoodsToSell();
     }
 }
 

@@ -1,11 +1,13 @@
 package com.example.spacetraderspicyber.service;
 
 import com.example.spacetraderspicyber.client.SpacetraderClient;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class ClientService {
 
@@ -25,7 +27,7 @@ public class ClientService {
         makeMoney();
     }
 
-    public void makeMoney() throws InterruptedException {
+    public void makeMoney() {
 
         //TODO: register agent each 2 weeks
         marketSearchService.saveMarketDataToDb();
@@ -37,14 +39,23 @@ public class ClientService {
             while (true) {
                 try{
                     tradingService.buyItemForContract("SPICYBER-1");
-
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    log.error("Error with ship 1.");
                 }
             }
         });
 
-        //Contracts
+        Thread ship2Thread = new Thread(() -> {
+            while (true) {
+                try {
+                    marketSearchService.marketResearch("SPICYBER-2");
+                } catch (InterruptedException e) {
+                    log.error("Error with ship 2.");
+                }
+            }
+        });
+
         ship1Thread.start();
+        ship2Thread.start();
     }
 }

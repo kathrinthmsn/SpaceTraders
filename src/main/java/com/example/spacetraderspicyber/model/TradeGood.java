@@ -25,5 +25,4 @@ public class TradeGood {
     @JoinColumn(name = "market_id")
     private Market market;
 
-    // getters and setters
 }

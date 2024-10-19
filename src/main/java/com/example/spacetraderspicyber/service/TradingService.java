@@ -6,14 +6,10 @@ import com.example.spacetraderspicyber.model.Good;
 import com.example.spacetraderspicyber.model.Market;
 import com.example.spacetraderspicyber.model.Market.MarketData;
 import com.example.spacetraderspicyber.model.TradeGood;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,7 +30,6 @@ public class TradingService {
     @Autowired
     private MarketService marketService;
 
-    //TODO: Buy Item in another System/ refine Items
     public void buyItemForContract(String shipSymbol) throws InterruptedException {
         if (getShipLoad(shipSymbol) > 5) {
             sellingService.selling(shipSymbol);
@@ -42,10 +37,9 @@ public class TradingService {
         List<Contract> contracts = contractsService.getContractInfo();
         Good goodForDelivery = contractsService.getGoodLeftToDeliverForContract(contracts);
 
-        if (this.checkPurchasePrice(shipSymbol, goodForDelivery, contracts)) {
+        if (checkPurchasePrice(shipSymbol, goodForDelivery, contracts)) {
             contractsService.purchaseCargoForContract(shipSymbol);
-        }
-        else {
+        } else {
             extractingService.goToExtractMinerals(shipSymbol);
             contractsService.checkContractValidity();
         }
@@ -55,39 +49,39 @@ public class TradingService {
         return spacetraderClient.seeShipDetails(shipSymbol).getData().getCargo().getUnits();
     }
 
-    public boolean checkPurchasePrice(String shipSymbol, Good goodForDelivery, List<Contract> contracts) throws InterruptedException {
+    private boolean checkPurchasePrice(String shipSymbol, Good goodForDelivery, List<Contract> contracts) throws InterruptedException {
         if (checkTradeGoods(shipSymbol, goodForDelivery, contracts)) {
-                return true;
-            } else {
-                List<Market> markets = marketService.findMarketsByGoodsToSell(goodForDelivery.getSymbol());
-                List<TradeGood>tradeGoods = marketService.findTradeGoodsBySymbol(goodForDelivery.getSymbol());
-                List<Market> marketsAvailableForBuyingGood = marketService.findMarketsByGoodsToSell(goodForDelivery.getSymbol());
-                List<Market> marketsWithTradeGoodNotDiscovered = findMarketsNotInTradeGoods(markets, tradeGoods);
-                while (marketsAvailableForBuyingGood.size() > tradeGoods.size()) {
-                    Market closestMarket = marketSearchService.findClosestMarket(marketsWithTradeGoodNotDiscovered, shipSymbol);
-                    marketSearchService.navigateToMarket(closestMarket, shipSymbol);
-                    MarketData marketData = spacetraderClient.viewMarketData(closestMarket.getSymbol()).getData();
-                    if (!marketData.getTradeGoods().isEmpty()) {
-                        updateTradeGoods(marketData);
-                        tradeGoods.add(new TradeGood());
-                    }
-                    marketsWithTradeGoodNotDiscovered.remove(closestMarket);
+            return true;
+        } else {
+            List<Market> markets = marketService.findMarketsByGoodsToSell(goodForDelivery.getSymbol());
+            List<TradeGood> tradeGoods = marketService.findTradeGoodsBySymbol(goodForDelivery.getSymbol());
+            List<Market> marketsAvailableForBuyingGood = marketService.findMarketsByGoodsToSell(goodForDelivery.getSymbol());
+            List<Market> marketsWithTradeGoodNotDiscovered = findMarketsNotInTradeGoods(markets, tradeGoods);
+            while (marketsAvailableForBuyingGood.size() > tradeGoods.size()) {
+                Market closestMarket = marketSearchService.findClosestMarket(marketsWithTradeGoodNotDiscovered, shipSymbol);
+                marketSearchService.navigateToMarket(closestMarket, shipSymbol);
+                MarketData marketData = spacetraderClient.viewMarketData(closestMarket.getSymbol()).getData();
+                if (!marketData.getTradeGoods().isEmpty()) {
+                    updateTradeGoods(marketData);
+                    tradeGoods.add(new TradeGood());
                 }
-            return checkTradeGoods(shipSymbol, goodForDelivery, contracts);
+                marketsWithTradeGoodNotDiscovered.remove(closestMarket);
             }
+            return checkTradeGoods(shipSymbol, goodForDelivery, contracts);
+        }
     }
 
     public boolean checkTradeGoods(String shipSymbol, Good goodForDelivery, List<Contract> contracts) throws InterruptedException {
         List<TradeGood> tradeGoods = marketService.findTradeGoodsBySymbol(goodForDelivery.getSymbol());
         List<Market> marketsAvailableForBuyingGood = marketService.findMarketsByGoodsToSell(goodForDelivery.getSymbol());
-        if(marketsAvailableForBuyingGood.size() <= tradeGoods.size()) {
+        if (marketsAvailableForBuyingGood.size() <= tradeGoods.size()) {
             TradeGood tradeGoodWithLowestPrice = findLowestPurchasePrice(tradeGoods);
             double priceToPayForContractGood = tradeGoodWithLowestPrice.getPurchasePrice() * goodForDelivery.getUnits();
             if ((getOnFulfilledMoney(contracts) > priceToPayForContractGood && getAgentCredits() > priceToPayForContractGood || (Good.isNotMinable(goodForDelivery)) && priceToPayForContractGood < 50000)) {
                 log.info("Trade Good found with Lowest Price: {} for {}$", goodForDelivery.getSymbol(), tradeGoodWithLowestPrice.getPurchasePrice());
                 marketSearchService.navigateToMarket(tradeGoodWithLowestPrice.getMarket(), shipSymbol);
                 MarketData marketData = spacetraderClient.viewMarketData(tradeGoodWithLowestPrice.getMarket().getSymbol()).getData();
-                    updateTradeGoods(marketData);
+                updateTradeGoods(marketData);
                 return true;
             }
 
@@ -98,9 +92,8 @@ public class TradingService {
 
     public static TradeGood findLowestPurchasePrice(List<TradeGood> tradeGoods) {
         if (tradeGoods == null || tradeGoods.isEmpty()) {
-            return null; // or throw an exception, depending on your requirements
+            return null;
         }
-
         TradeGood lowestPriceTradeGood = tradeGoods.get(0);
 
         for (TradeGood tradeGood : tradeGoods) {
@@ -147,27 +140,6 @@ public class TradingService {
 
     private int getAgentCredits() {
         return spacetraderClient.seeAgent().getData().getCredit();
-    }
-
-    public TradeGood getTradeGoodByGoodSymbol(JSONObject marketData, Good goodForDelivery) {
-        if (marketData.getJSONObject("data").has("tradeGoods")) {
-            Gson gson = new Gson();
-            Type tradeGoodListType = new TypeToken<List<TradeGood>>() {}.getType();
-            List<TradeGood> tradeGoods = gson.fromJson(marketData.getJSONObject("data").getJSONArray("tradeGoods").toString(), tradeGoodListType);
-            return getTradeGoodBySymbol(tradeGoods, goodForDelivery.getSymbol());
-        }
-        TradeGood tradeGood = new TradeGood();
-        tradeGood.setPurchasePrice(Double.MAX_VALUE);
-        return tradeGood;
-    }
-
-    public static TradeGood getTradeGoodBySymbol(List<TradeGood> tradeGoods, String goodSymbol) {
-        for (TradeGood tradeGood : tradeGoods) {
-            if (tradeGood.getSymbol().equals(goodSymbol)) {
-                return tradeGood; // Found a trade good with the target symbol
-            }
-        }
-        return null; // Symbol not found in any trade good
     }
 
 }

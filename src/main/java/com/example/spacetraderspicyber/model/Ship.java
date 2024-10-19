@@ -203,5 +203,21 @@ public class Ship {
         public double calculateDistanceToCurrentLocation(int destinationX, int destinationY) {
             return Math.sqrt(Math.pow(nav.route.destination.x - nav.route.destination.y, 2) + Math.pow(destinationX - destinationY, 2));
         }
+
+        public boolean shipNotFullyFueled() {
+            return getFuel().getCurrent() != getFuel().getCapacity();
+        }
+
+        public int getRemainingFuelCapacity() {
+            return getFuel().getCapacity() - getFuel().getCurrent();
+        }
+
+        public int getRemainingCargoCapacity() {
+            return getCargo().getCapacity() - getCargo().getUnits();
+        }
+
+        public boolean cargoFull() {
+            return getCargo().getCapacity() == getCargo().getUnits();
+        }
     }
 }
